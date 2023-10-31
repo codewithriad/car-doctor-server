@@ -1,15 +1,27 @@
 const express = require("express");
 const cors = require("cors");
-const { MongoClient, ServerApiVersion, ObjectId } = require("mongodb");
+const {
+  MongoClient,
+  ServerApiVersion,
+  ObjectId,
+  CURSOR_FLAGS,
+} = require("mongodb");
 require("dotenv").config();
+const cookieParser = require("cookie-parser");
 const jwt = require("jsonwebtoken");
 const app = express();
 const port = process.env.PORT || 5000;
 
 // middleware
 
-app.use(cors());
+app.use(
+  cors({
+    origin: ["http://localhost:5173", "http://localhost:5174"],
+    credentials: true,
+  })
+);
 app.use(express.json());
+app.use(cookieParser());
 
 console.log(process.env.DB_PASS);
 
@@ -24,6 +36,13 @@ const client = new MongoClient(uri, {
   },
 });
 
+// custom middleware
+
+const logger = async (req, res, next) => {
+  console.log(req.host, req.originUrl);
+  next();
+};
+
 async function run() {
   try {
     // Connect the client to the server	(optional starting in v4.7)
@@ -33,9 +52,10 @@ async function run() {
     const bookingCollection = client.db("carDoctor").collection("bookings");
 
     // auth related api
-    app.post("/jwt", async (req, res) => {
+    app.post("/jwt", logger, async (req, res) => {
       const user = req.body;
       console.log(user);
+
       const token = jwt.sign(user, process.env.ACCESS_TOKEN_SECRET, {
         expiresIn: "1h",
       });
@@ -44,13 +64,12 @@ async function run() {
         .cookie("token", token, {
           httpOnly: true,
           secure: false,
-          sameSite: "none",
         })
         .send({ success: true });
     });
 
     // services related api
-    app.get("/services", async (req, res) => {
+    app.get("/services", logger, async (req, res) => {
       const cursor = serviceCollection.find();
       const result = await cursor.toArray();
       res.send(result);
@@ -66,6 +85,7 @@ async function run() {
       res.send(result);
     });
 
+    // bookings post request
     app.post("/bookings", async (req, res) => {
       const booking = req.body;
       console.log(booking);
@@ -73,8 +93,10 @@ async function run() {
       res.send(result);
     });
 
-    app.get("/bookings", async (req, res) => {
-      console.log(req.query);
+    // bookings get request
+    app.get("/bookings", logger, async (req, res) => {
+      console.log(req.query.email);
+      console.log("new token", req.cookies);
       let query = {};
       if (req.query?.email) {
         query = { email: req.query.email };
